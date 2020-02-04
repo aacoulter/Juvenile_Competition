@@ -1,0 +1,21 @@
+---
+title: "Juvenile_Competition"
+author: "Angie Coulter"
+date: "04/02/2020"
+output: github_document
+---
+
+## Data Preparation
+Load packages needed for data wrangling and plotting.
+```{r results='hide', message=F}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(cowplot)
+```
+
+Import growth and mortality data. 
+```{r}
+lw <- read.csv("Juv_Length_Weight.csv", header=T)
+mort <- read.csv("Juv_Mort.csv", header=T)
+```
