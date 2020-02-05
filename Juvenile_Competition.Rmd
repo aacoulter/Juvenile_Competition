@@ -19,3 +19,44 @@ Import growth and mortality data.
 lw <- read.csv("Juv_Length_Weight.csv", header=T)
 mort <- read.csv("Juv_Mort.csv", header=T)
 ```
+
+Feb 4th: Tank Conversion Measures
+```{r}
+#Import tank mass and feed to calculate conversions
+conv <- read.csv("Juv_Mass_Feed_Tank.csv", header = T)
+
+#Calculate feed efficiency: out/in
+conv$FE <- conv$Mass_Gained/conv$Feed
+
+#Calculate food conversion rate: in/out
+conv$FCR <- conv$Feed/conv$Mass_Gained
+
+FE <- conv %>%
+  group_by(Treatment) %>%
+  summarise(FE_Mean = mean(FE),
+            FE_SD =sd(FE))
+
+FCR <- conv %>%
+  group_by(Treatment) %>%
+  summarise(FCR_Mean = mean(FCR),
+            FCR_SD =sd(FCR))
+
+p <- ggplot(conv, aes(Treatment,FCR))
+p <- p + geom_boxplot(outlier.colour="black", outlier.shape=16, outlier.size=2, notch=FALSE)
+p <- p + ylab("Food Conversion Rate")
+p <- p + xlab("Treatment")
+p <- p + theme_classic()
+p <- p + scale_y_continuous(expand = c(0,0), limits = c(0.25,3), breaks = seq(0.25,3,0.25))
+p <- p + ggtitle("Food Conversion Rate (Feed/Growth)")
+p
+
+q <- ggplot(conv, aes(Treatment,FE))
+q <- q + geom_boxplot(outlier.colour="black", outlier.shape=16, outlier.size=2, notch=FALSE)
+q <- q + ylab("Feed Efficiency")
+q <- q + xlab("Treatment")
+q <- q + theme_classic()
+q <- q + scale_y_continuous(expand = c(0,0), limits = c(0.25,2.25), breaks = seq(0.25,2.25,0.25))
+q <- q + ggtitle("Feed Efficiency (Growth/Feed)")
+q
+
+```
