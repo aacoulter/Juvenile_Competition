@@ -12,8 +12,9 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 library(cowplot)
+library(lme4)
+library(lmerTest)
 ```
-
 
 Import growth and mortality data. 
 ```{r}
@@ -56,11 +57,15 @@ anova(lm)
 
 ANCOVA for final mass with ration as covariate
 ```{r warning=F, message=F, dpi=300}
+lw$LnMass <- log(lw$Mass)
+
 tankfin <- lw %>%
   filter(Week == 4, Note != "Stuck in filter") %>%
   group_by(Tank,Treatment,Density,Ration) %>%
   summarise(MeanWt = mean(Mass,na.rm = T),
-            SDWt =sd(Mass, na.rm = T))
+            SDWt =sd(Mass, na.rm = T),
+            MeanLnWt = mean(LnMass,na.rm = T),
+            SDLnWt =sd(LnMass, na.rm = T))
 
 p <- ggplot(tankfin, aes(x=Density, y=MeanWt,color=Ration)) + geom_point()
 p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
@@ -73,16 +78,30 @@ p
 
 lm <- lm(tankfin$MeanWt ~ tankfin$Density * tankfin$Ration)
 anova(lm)
+
+q <- ggplot(tankfin, aes(x=Density, y=MeanLnWt,color=Ration)) + geom_point()
+q <- q + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
+q <- q + scale_y_continuous(limits = c(1,2.5), breaks=seq(1,2.5,.5))
+q <- q + geom_smooth(method = "lm")
+q <- q + theme_classic()
+q <- q + xlab("Density (Fish/Tank)")
+q <- q + ylab("Ln(Mass) (Grams)")
+q
+
+lmln <- lm(tankfin$MeanLnWt ~ tankfin$Density * tankfin$Ration)
+anova(lmln)
 ```
 
 Log-Linear regression for mortality count
+
 Use a poisson distribution because count data is not normal
+
 Use a chi-square test in the ANOVA command for same reason
 ```{r warning=F, message=F, dpi=300}
 morttot <- read.csv("Juv_Mort_Total.csv",header=T)
 
 p <- ggplot(morttot, aes(Density,TotalMort, color=Ration)) + geom_point()
-p <- p + scale_x_continuous(limits = c(0,7), breaks=seq(1,7,2))
+p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
 p <- p + ylab("Count of Mortality")
 p <- p + xlab("Density (Fish/Tank)")
 p <- p + geom_smooth(method = "lm")
@@ -98,11 +117,108 @@ tapply(morttot$TotalMort, morttot$Density, mean)
 tapply(morttot$TotalMort, morttot$Density, var)
 ```
 
+Alive and Dead Mass Comparison
+```{r warning=F, message=F, dpi=300}
+mortwt <- mort %>%
+  group_by(Week, Tank) %>%
+  summarise(N=n())
+
+livewt <- lw %>%
+  filter(Note!= "Mort") %>%
+  group_by(Week, Tank, Treatment) %>%
+  summarise(meanwt = mean(Mass, na.rm = T))
+
+livesum <- livewt %>%
+  filter(Week!=0)%>%
+  group_by(Week,Treatment)%>%
+  summarise(mean = mean(meanwt, na.rm = T),
+            sdwt = sd(meanwt, na.rm = T))
+
+livesum$Living <- "Living"
+
+mortwt <- mort %>%
+  group_by(Week, Tank, Treatment) %>%
+  summarise(meanwt = mean(Mass,na.rm = T))
+
+mortsum <- mortwt %>%
+  filter(meanwt != "NaN") %>%
+  group_by(Week,Treatment)%>%
+  summarise(mean = mean(meanwt, na.rm = T),
+            sdwt = sd(meanwt, na.rm = T))
+
+mortsum$Living <- "Mortality"
+
+comp <- as.data.frame(rbind(mortsum,livesum))
+
+limits <- aes(ymax = comp$mean + comp$sdwt,
+              ymin = comp$mean - comp$sdwt)
+
+p <- ggplot(comp,aes(Treatment,mean,fill = factor(Living))) + geom_bar(position = position_dodge2(preserve = "single"), stat="identity") + facet_wrap(comp$Week, scales = "free") + scale_fill_discrete(name = "Status")
+p <- p + geom_errorbar(limits, width = 0.1, position=position_dodge(.9))
+#p <- p + geom_errorbar(aes(ymin = mean - sdwt, ymax = mean + sdwt, fill = factor(Living)), width=0.2) 
+p <- p + scale_y_continuous(limits = c(0,10), breaks = seq(0,10,2))
+p <- p + ylab("Mean Mass (g)")
+p <- p + theme_bw()
+p
+
+
+```
+
+
+```{r warning=F, message=F, dpi=300}
+#Assign lw data to Alive status
+#Remove records of dead fish
+lw$Status <- "Alive"
+al <- lw %>% 
+  filter(Note != "Mort")
+
+#Add Dead status
+mort$Status <- "Dead"
+
+juv <- bind_rows(al,mort) %>%
+  select(-Colour)
+juv$Date <- as.Date(juv$Date, "%m-%d-%Y")
+
+#Remove some outliers: dried to floor and trapped in filter
+juv <- juv[-c(388,437),] 
+
+ids <- read.csv("Juv_Fish_ID.csv")
+
+juv <- left_join(juv,ids)
+juv$Status <- as.factor(juv$Status)
+
+juv$LnMass <- log(juv$Mass)
+
+juvsum <- juv %>%
+  group_by(Week,Treatment,Status)%>%
+  filter(Week != 0)%>%
+  summarise(meanwt = mean(Mass, na.rm = T),
+            sdwt = sd(Mass, na.rm = T),
+            meanlnwt = mean(LnMass, na.rm = T),
+            sdlnwt = sd(LnMass, na.rm = T))
+
+limits <- aes(ymax = juvsum$meanlnwt + juvsum$sdlnwt,
+              ymin = juvsum$meanlnwt - juvsum$sdlnwt)
+
+p <- ggplot(juvsum,aes(Treatment,meanlnwt,fill = factor(Status))) + geom_bar(position = position_dodge2(preserve = "single"), stat="identity") + facet_wrap(juvsum$Week) + scale_fill_discrete(name = "Status")
+p <- p + geom_errorbar(limits, width = 0.1, position=position_dodge(.9))
+#p <- p + geom_errorbar(aes(ymin = mean - sdwt, ymax = mean + sdwt, fill = factor(Living)), width=0.2) 
+p <- p + ylab("Ln(Mass) (g)")
+p <- p + theme_bw()
+p
+
+lme <- lmer(LnMass ~ Density + Ration + Status + Date + (1|Tank) + (1|FishUn), juv)
+summary(lme)
+anova(lme, type = 3)
+ranova(lme)
+
+```
+
 
 Feb 4th: Tank Conversion Measures
 Feeding Efficiency
 
-```{r}
+```{r warning=F, message=F, dpi=300}
 #Import tank mass and feed to calculate conversions
 conv <- read.csv("Juv_Mass_Feed_Tank.csv", header = T)
 
@@ -140,7 +256,7 @@ anova(lm)
 
 
 Feed Conversion Rate
-```{r}
+```{r warning=F, message=F, dpi=300}
 #Calculate food conversion rate: in/out
 conv$FCR <- conv$Feed/conv$Mass_Gained
 
