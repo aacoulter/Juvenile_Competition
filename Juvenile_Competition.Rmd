@@ -119,53 +119,6 @@ tapply(morttot$TotalMort, morttot$Density, var)
 
 Alive and Dead Mass Comparison
 ```{r warning=F, message=F, dpi=300}
-mortwt <- mort %>%
-  group_by(Week, Tank) %>%
-  summarise(N=n())
-
-livewt <- lw %>%
-  filter(Note!= "Mort") %>%
-  group_by(Week, Tank, Treatment) %>%
-  summarise(meanwt = mean(Mass, na.rm = T))
-
-livesum <- livewt %>%
-  filter(Week!=0)%>%
-  group_by(Week,Treatment)%>%
-  summarise(mean = mean(meanwt, na.rm = T),
-            sdwt = sd(meanwt, na.rm = T))
-
-livesum$Living <- "Living"
-
-mortwt <- mort %>%
-  group_by(Week, Tank, Treatment) %>%
-  summarise(meanwt = mean(Mass,na.rm = T))
-
-mortsum <- mortwt %>%
-  filter(meanwt != "NaN") %>%
-  group_by(Week,Treatment)%>%
-  summarise(mean = mean(meanwt, na.rm = T),
-            sdwt = sd(meanwt, na.rm = T))
-
-mortsum$Living <- "Mortality"
-
-comp <- as.data.frame(rbind(mortsum,livesum))
-
-limits <- aes(ymax = comp$mean + comp$sdwt,
-              ymin = comp$mean - comp$sdwt)
-
-p <- ggplot(comp,aes(Treatment,mean,fill = factor(Living))) + geom_bar(position = position_dodge2(preserve = "single"), stat="identity") + facet_wrap(comp$Week, scales = "free") + scale_fill_discrete(name = "Status")
-p <- p + geom_errorbar(limits, width = 0.1, position=position_dodge(.9))
-#p <- p + geom_errorbar(aes(ymin = mean - sdwt, ymax = mean + sdwt, fill = factor(Living)), width=0.2) 
-p <- p + scale_y_continuous(limits = c(0,10), breaks = seq(0,10,2))
-p <- p + ylab("Mean Mass (g)")
-p <- p + theme_bw()
-p
-
-
-```
-
-
-```{r warning=F, message=F, dpi=300}
 #Assign lw data to Alive status
 #Remove records of dead fish
 lw$Status <- "Alive"
