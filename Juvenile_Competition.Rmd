@@ -14,13 +14,94 @@ library(tidyr)
 library(cowplot)
 ```
 
+
 Import growth and mortality data. 
 ```{r}
 lw <- read.csv("Juv_Length_Weight.csv", header=T)
 mort <- read.csv("Juv_Mort.csv", header=T)
 ```
 
+Specific Growth Rate
+```{r warning=F, message=F, dpi=300}
+wtfin <- lw %>%
+  filter(Week == 4) %>%
+  group_by(Tank,Treatment,Density,Ration)
+wtin <- lw %>%
+  filter(Week == 0) %>%
+  group_by(Tank,Treatment,Density,Ration)
+
+gr <- left_join(wtfin,wtin, by = c("Tank", "FishID", "Density", "Ration","Treatment"))
+gr <- gr %>%
+  select(-Date.x,-Date.y,-Week.x,-Week.y,-Note.x,-Note.y,-Length.x,-Length.y)
+gr$sgr <- ((log(gr$Mass.x)-log(gr$Mass.y))/28)*100
+
+sgr <- gr %>%
+  group_by(Tank,Treatment,Density,Ration) %>%
+  summarise(sgrm = mean(sgr,na.rm = T),
+            sgrsd =sd(sgr, na.rm = T))
+
+p <- ggplot(sgr, aes(x=Density, y=sgrm,color=Ration)) + geom_point()
+p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
+p <- p + scale_y_continuous(limits = c(0.5,3), breaks=seq(0.5,3,0.5))
+p <- p + geom_smooth(method = "lm")
+p <- p + theme_classic()
+p <- p + xlab("Density (Fish/Tank)")
+p <- p + ylab("Specific Growth Rate (%/day)")
+p
+
+lm <- lm(sgr$sgrm ~ sgr$Density * sgr$Ration)
+anova(lm)
+
+```
+
+ANCOVA for final mass with ration as covariate
+```{r warning=F, message=F, dpi=300}
+tankfin <- lw %>%
+  filter(Week == 4, Note != "Stuck in filter") %>%
+  group_by(Tank,Treatment,Density,Ration) %>%
+  summarise(MeanWt = mean(Mass,na.rm = T),
+            SDWt =sd(Mass, na.rm = T))
+
+p <- ggplot(tankfin, aes(x=Density, y=MeanWt,color=Ration)) + geom_point()
+p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
+p <- p + scale_y_continuous(limits = c(2,10), breaks=seq(2,10,2))
+p <- p + geom_smooth(method = "lm")
+p <- p + theme_classic()
+p <- p + xlab("Density (Fish/Tank)")
+p <- p + ylab("Mass (Grams)")
+p
+
+lm <- lm(tankfin$MeanWt ~ tankfin$Density * tankfin$Ration)
+anova(lm)
+```
+
+Log-Linear regression for mortality count
+Use a poisson distribution because count data is not normal
+Use a chi-square test in the ANOVA command for same reason
+```{r warning=F, message=F, dpi=300}
+morttot <- read.csv("Juv_Mort_Total.csv",header=T)
+
+p <- ggplot(morttot, aes(Density,TotalMort, color=Ration)) + geom_point()
+p <- p + scale_x_continuous(limits = c(0,7), breaks=seq(1,7,2))
+p <- p + ylab("Count of Mortality")
+p <- p + xlab("Density (Fish/Tank)")
+p <- p + geom_smooth(method = "lm")
+p <- p + theme_classic()
+p
+
+y <- glm(TotalMort ~ Density * Ration, family=poisson, data=morttot)
+anova(y, test="Chisq")
+
+#Evaluating assumptions of the glm() fit
+#A central property of the Poisson distribution is that the variance and mean are equal 
+tapply(morttot$TotalMort, morttot$Density, mean)
+tapply(morttot$TotalMort, morttot$Density, var)
+```
+
+
 Feb 4th: Tank Conversion Measures
+Feeding Efficiency
+
 ```{r}
 #Import tank mass and feed to calculate conversions
 conv <- read.csv("Juv_Mass_Feed_Tank.csv", header = T)
@@ -28,13 +109,40 @@ conv <- read.csv("Juv_Mass_Feed_Tank.csv", header = T)
 #Calculate feed efficiency: out/in
 conv$FE <- conv$Mass_Gained/conv$Feed
 
-#Calculate food conversion rate: in/out
-conv$FCR <- conv$Feed/conv$Mass_Gained
 
 FE <- conv %>%
   group_by(Treatment) %>%
   summarise(FE_Mean = mean(FE),
             FE_SD =sd(FE))
+
+q <- ggplot(conv, aes(Treatment,FE))
+q <- q + geom_boxplot(outlier.colour="black", outlier.shape=16, outlier.size=2, notch=FALSE)
+q <- q + ylab("Feed Efficiency")
+q <- q + xlab("Treatment")
+q <- q + theme_classic()
+q <- q + scale_y_continuous(expand = c(0,0), limits = c(0.25,2.25), breaks = seq(0.25,2.25,0.25))
+q <- q + ggtitle("Feed Efficiency (Growth/Feed)")
+q
+
+p <- ggplot(conv, aes(x=Density, y=FE,color=Ration)) + geom_point()
+p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
+p <- p + scale_y_continuous(limits = c(0,2.5), breaks=seq(0,2.5,.5))
+p <- p + geom_smooth(method = "lm")
+p <- p + theme_classic()
+p <- p + xlab("Density (Fish/Tank)")
+p <- p + ylab("Feed Efficiency")
+p
+
+lm <- lm(conv$FE ~ conv$Density * conv$Ration)
+anova(lm)
+
+```
+
+
+Feed Conversion Rate
+```{r}
+#Calculate food conversion rate: in/out
+conv$FCR <- conv$Feed/conv$Mass_Gained
 
 FCR <- conv %>%
   group_by(Treatment) %>%
@@ -50,13 +158,17 @@ p <- p + scale_y_continuous(expand = c(0,0), limits = c(0.25,3), breaks = seq(0.
 p <- p + ggtitle("Food Conversion Rate (Feed/Growth)")
 p
 
-q <- ggplot(conv, aes(Treatment,FE))
-q <- q + geom_boxplot(outlier.colour="black", outlier.shape=16, outlier.size=2, notch=FALSE)
-q <- q + ylab("Feed Efficiency")
-q <- q + xlab("Treatment")
-q <- q + theme_classic()
-q <- q + scale_y_continuous(expand = c(0,0), limits = c(0.25,2.25), breaks = seq(0.25,2.25,0.25))
-q <- q + ggtitle("Feed Efficiency (Growth/Feed)")
-q
+p <- ggplot(conv, aes(x=Density, y=FCR,color=Ration)) + geom_point()
+p <- p + scale_x_continuous(limits = c(1,7), breaks=seq(1,7,2))
+p <- p + scale_y_continuous(limits = c(0,3), breaks=seq(0,3,.5))
+p <- p + geom_smooth(method = "lm")
+p <- p + theme_classic()
+p <- p + xlab("Density (Fish/Tank)")
+p <- p + ylab("Feed Conversion Rate")
+p
+
+lm <- lm(conv$FCR ~ conv$Density * conv$Ration)
+anova(lm)
 
 ```
+
